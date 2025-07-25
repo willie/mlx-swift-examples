@@ -18,6 +18,9 @@ struct LMModel {
 
     /// Type of the model (language or vision-language)
     let type: ModelType
+    
+    /// Source of the model (preconfigured or discovered)
+    let source: ModelSource
 
     /// Defines the type of language model
     enum ModelType {
@@ -25,6 +28,30 @@ struct LMModel {
         case llm
         /// Vision-language model (supports images and text)
         case vlm
+    }
+    
+    /// Defines where the model came from
+    enum ModelSource {
+        /// Pre-configured model included in the app
+        case preconfigured
+        /// Model discovered in the Hugging Face cache
+        case discovered
+    }
+    
+    /// Creates a preconfigured model
+    init(name: String, configuration: ModelConfiguration, type: ModelType) {
+        self.name = name
+        self.configuration = configuration
+        self.type = type
+        self.source = .preconfigured
+    }
+    
+    /// Creates a discovered model
+    init(name: String, configuration: ModelConfiguration, type: ModelType, source: ModelSource) {
+        self.name = name
+        self.configuration = configuration
+        self.type = type
+        self.source = source
     }
 }
 

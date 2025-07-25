@@ -15,9 +15,8 @@ import MLXVLM
 /// This class handles model loading, caching, and text generation using various LLM and VLM models.
 @Observable
 class MLXService {
-    /// List of available models that can be used for generation.
-    /// Includes both language models (LLM) and vision-language models (VLM).
-    static let availableModels: [LMModel] = [
+    /// Pre-configured models that are guaranteed to work
+    static let preconfiguredModels: [LMModel] = [
         LMModel(name: "llama3.2:1b", configuration: LLMRegistry.llama3_2_1B_4bit, type: .llm),
         LMModel(name: "qwen2.5:1.5b", configuration: LLMRegistry.qwen2_5_1_5b, type: .llm),
         LMModel(name: "smolLM:135m", configuration: LLMRegistry.smolLM_135M_4bit, type: .llm),
@@ -33,6 +32,13 @@ class MLXService {
         LMModel(name: "gemma3n:E2B", configuration: LLMRegistry.gemma3n_E2B_it_lm_4bit, type: .llm),
         LMModel(name: "gemma3n:E4B", configuration: LLMRegistry.gemma3n_E4B_it_lm_4bit, type: .llm),
     ]
+    
+    /// All available models including discovered ones
+    static var availableModels: [LMModel] {
+        // For now, just return preconfigured models in static context
+        // Discovered models will be added via the UI
+        preconfiguredModels
+    }
 
     /// Cache to store loaded model containers to avoid reloading.
     private let modelCache = NSCache<NSString, ModelContainer>()
@@ -41,6 +47,13 @@ class MLXService {
     /// Access this property to monitor model download status.
     @MainActor
     private(set) var modelDownloadProgress: Progress?
+    
+    /// Initialize the service and discover available models
+    init() {
+        Task {
+            await ModelDiscoveryService.shared.discoverModels()
+        }
+    }
 
     /// Loads a model from the hub or retrieves it from cache.
     /// - Parameter model: The model configuration to load

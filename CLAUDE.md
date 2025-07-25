@@ -127,3 +127,59 @@ When implementing new models:
 4. Follow existing naming conventions and code style
 5. Models should implement `sanitize()` for weight preparation
 6. Use MLX operations consistently with existing code
+
+## Model Discovery in MLXChatExample
+
+The MLXChatExample app can dynamically discover models downloaded to specific locations:
+- `ModelDiscoveryService` scans `~/Downloads/huggingface/` for MLX models
+- Discovered models appear in a "Downloaded Models" section in the UI
+- Models must have:
+  - `config.json` with a supported `model_type`
+  - Model weights (`.safetensors` files)
+  - Tokenizer configuration files
+- VLM models are detected by presence of `vision_config` in config.json
+
+### Important: Sandbox Limitations
+
+Due to macOS app sandboxing, the app **cannot** access:
+- `~/.cache/huggingface/hub/` (standard Hugging Face cache)
+- Any directories outside the app's container except Downloads
+- Symbolic links pointing outside the sandbox
+
+**Required**: Models must be placed in:
+```
+~/Downloads/huggingface/models/{org}/{model-name}/
+```
+
+Example:
+```
+~/Downloads/huggingface/models/mlx-community/Llama-3.2-3B-Instruct-4bit/
+```
+
+### How to Move Models from Cache
+
+Models in the cache have encoded names like `models--mlx-community--Llama-3.2-3B-Instruct-4bit`.
+
+#### Option 1: Use the provided script
+```bash
+# Run the script to copy all MLX models
+./copy-models-from-cache.sh
+```
+
+#### Option 2: Copy manually
+```bash
+# For a specific model, decode the name:
+# models--{org}--{model-name} → {org}/{model-name}
+
+# Example for Llama-3.2-3B-Instruct-4bit:
+mkdir -p ~/Downloads/huggingface/models/mlx-community/
+cp -LR ~/.cache/huggingface/hub/models--mlx-community--Llama-3.2-3B-Instruct-4bit/snapshots/*/* \
+       ~/Downloads/huggingface/models/mlx-community/Llama-3.2-3B-Instruct-4bit/
+
+# The -L flag resolves symlinks during copy
+```
+
+#### Understanding the cache structure:
+- Cache format: `models--{organization}--{model-name}/snapshots/{hash}/`
+- Downloads format: `models/{organization}/{model-name}/`
+- The `--` in cache names represents `/` in the model path

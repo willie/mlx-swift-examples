@@ -12,6 +12,14 @@ import SwiftUI
 struct ChatToolbarView: View {
     /// View model containing the chat state and controls
     @Bindable var vm: ChatViewModel
+    
+    /// Track discovered models to update UI
+    @State private var discoveredModels: [LMModel] = []
+    
+    /// All available models combining preconfigured and discovered
+    private var allModels: [LMModel] {
+        MLXService.preconfiguredModels + discoveredModels
+    }
 
     var body: some View {
         // Display error message if present
@@ -35,10 +43,47 @@ struct ChatToolbarView: View {
 
         // Model selection picker
         Picker("Model", selection: $vm.selectedModel) {
-            ForEach(MLXService.availableModels) { model in
-                Text(model.displayName)
-                    .tag(model)
+            // Pre-configured models
+            Section {
+                ForEach(MLXService.preconfiguredModels) { model in
+                    Text(model.displayName)
+                        .tag(model)
+                }
+            } header: {
+                Text("Recommended Models")
             }
+            
+            // Discovered models (if any)
+            if !discoveredModels.isEmpty {
+                Divider()
+                
+                Section {
+                    ForEach(discoveredModels) { model in
+                        Text(model.displayName)
+                            .tag(model)
+                    }
+                } header: {
+                    Text("Downloaded Models")
+                }
+            } else if !ModelDiscoveryService.shared.isDiscovering {
+                Divider()
+                
+                Section {
+                    Text("No downloaded models found")
+                        .foregroundColor(.secondary)
+                        .italic()
+                } header: {
+                    Text("Downloaded Models")
+                } footer: {
+                    Text("Place models in ~/Downloads/huggingface/models/{org}/{model}/")
+                        .font(.caption)
+                }
+            }
+        }
+        .task {
+            // Load discovered models when view appears
+            await ModelDiscoveryService.shared.discoverModels()
+            discoveredModels = ModelDiscoveryService.shared.discoveredModels
         }
     }
 }
