@@ -1,0 +1,103 @@
+MLXChatExample Data Flow Diagram
+================================
+
+This diagram shows how user input flows to the LLM and how responses flow back to the UI.
+
+┌─────────────────────────────────────────────────────────────────────────────────────┐
+│                                    UI LAYER                                         │
+├─────────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                     │
+│  ┌─────────────────┐         ┌──────────────────┐         ┌───────────────────┐   │
+│  │   User Types    │  ────>  │  PromptField     │  ────>  │   Send Button     │   │
+│  │   Text Input    │         │  TextField       │         │   vm.generate()   │   │
+│  └─────────────────┘         │  @Binding prompt │         └───────────────────┘   │
+│                              └──────────────────┘                    │              │
+│                                                                      ▼              │
+└──────────────────────────────────────────────────────────────────────────────────┘
+                                                                       │
+                                                                       ▼
+┌─────────────────────────────────────────────────────────────────────────────────────┐
+│                              VIEWMODEL LAYER (ChatViewModel)                         │
+├─────────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                     │
+│  ┌─────────────────┐         ┌──────────────────┐         ┌───────────────────┐   │
+│  │  generate()     │  ────>  │  Create User     │  ────>  │  Add Assistant    │   │
+│  │  method         │         │  Message         │         │  Message (empty)  │   │
+│  └─────────────────┘         └──────────────────┘         └───────────────────┘   │
+│           │                                                          │              │
+│           ▼                                                          ▼              │
+│  ┌─────────────────┐         ┌──────────────────────────────────────┐             │
+│  │  Clear Input    │  ────>  │  Task { mlxService.generate(...) }  │             │
+│  │  prompt = ""    │         └──────────────────────────────────────┘             │
+│  └─────────────────┘                              │                               │
+│                                                   ▼                               │
+└──────────────────────────────────────────────────────────────────────────────────┘
+                                                    │
+                                                    ▼
+┌─────────────────────────────────────────────────────────────────────────────────────┐
+│                               SERVICE LAYER (MLXService)                             │
+├─────────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                     │
+│  ┌─────────────────┐         ┌──────────────────┐         ┌───────────────────┐   │
+│  │  Load Model     │  ────>  │  Transform       │  ────>  │  Create UserInput │   │
+│  │  from Cache     │         │  Messages to     │         │  with options     │   │
+│  └─────────────────┘         │  MLX Format      │         └───────────────────┘   │
+│                              └──────────────────┘                  │              │
+│                                                                     ▼              │
+└──────────────────────────────────────────────────────────────────────────────────┘
+                                                                      │
+                                                                      ▼
+┌─────────────────────────────────────────────────────────────────────────────────────┐
+│                                   MLX FRAMEWORK                                      │
+├─────────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                     │
+│  ┌─────────────────────────┐         ┌────────────────────────────────────────┐   │
+│  │  ModelContext.run()     │  ────>  │  MLXLMCommon.generate()                │   │
+│  │  - temperature: 0.7     │         │  Returns: AsyncStream<Generation>      │   │
+│  └─────────────────────────┘         └────────────────────────────────────────┘   │
+│                                                       │                            │
+└───────────────────────────────────────────────────────────────────────────────────┘
+                                                        │
+                    ┌───────────────────────────────────┘
+                    │  AsyncStream<Generation>
+                    ▼
+┌─────────────────────────────────────────────────────────────────────────────────────┐
+│                            RESPONSE FLOW (Back to UI)                                │
+├─────────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                     │
+│  ┌─────────────────────────┐         ┌────────────────────────────────────────┐   │
+│  │  ChatViewModel receives │  ────>  │  Append chunks to assistant Message   │   │
+│  │  stream chunks          │         │  message.content += chunk.text        │   │
+│  └─────────────────────────┘         └────────────────────────────────────────┘   │
+│                                                       │                            │
+│                                                       ▼                            │
+│  ┌─────────────────────────────────────────────────────────────────────────────┐  │
+│  │  @Observable Message triggers UI update                                      │  │
+│  │  ConversationView displays growing message content in real-time              │  │
+│  └─────────────────────────────────────────────────────────────────────────────┘  │
+│                                                                                     │
+└─────────────────────────────────────────────────────────────────────────────────────┘
+
+KEY COMPONENTS:
+─────────────────
+• PromptField.swift     - User input capture UI
+• ChatViewModel.swift   - Business logic and state management  
+• MLXService.swift      - Model loading and MLX integration
+• Message.swift         - @Observable data model
+• ConversationView      - Message display UI
+
+ASYNC FLOW:
+───────────
+1. User action triggers async Task
+2. MLX generates tokens as AsyncStream
+3. ViewModel consumes stream chunks
+4. @Observable properties update UI automatically
+5. Users see real-time streaming response
+
+FILE REFERENCES:
+────────────────
+• Views/PromptField.swift:25-34      - User input TextField and send button
+• ChatView.swift:38-46                - PromptField integration
+• ViewModels/ChatViewModel.swift:61-118   - generate() method implementation
+• Services/MLXService.swift:88-126    - MLX service generate() method
+• Models/Message.swift                - Observable message model
