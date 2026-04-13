@@ -208,49 +208,49 @@ struct MemoryArguments: ParsableArguments, Sendable {
     @Option(name: .long, help: "Maximum memory size in M")
     var memorySize: Int?
 
-    var startMemory: GPU.Snapshot?
+    var startMemory: Memory.Snapshot?
 
     mutating func start<L>(_ load: @Sendable () async throws -> L) async throws -> L {
         if let cacheSize {
-            GPU.set(cacheLimit: cacheSize * 1024 * 1024)
+            Memory.cacheLimit = cacheSize * 1024 * 1024
         }
 
         if let memorySize {
-            GPU.set(memoryLimit: memorySize * 1024 * 1024)
+            Memory.memoryLimit = memorySize * 1024 * 1024
         }
 
         let result = try await load()
-        startMemory = GPU.snapshot()
+        startMemory = Memory.snapshot()
 
         return result
     }
 
     mutating func start() {
         if let cacheSize {
-            GPU.set(cacheLimit: cacheSize * 1024 * 1024)
+            Memory.cacheLimit = cacheSize * 1024 * 1024
         }
 
         if let memorySize {
-            GPU.set(memoryLimit: memorySize * 1024 * 1024)
+            Memory.memoryLimit = memorySize * 1024 * 1024
         }
 
-        startMemory = GPU.snapshot()
+        startMemory = Memory.snapshot()
     }
 
     func reportCurrent() {
         if memoryStats {
-            let memory = GPU.snapshot()
+            let memory = Memory.snapshot()
             print(memory.description)
         }
     }
 
     func reportMemoryStatistics() {
         if memoryStats, let startMemory {
-            let endMemory = GPU.snapshot()
+            let endMemory = Memory.snapshot()
 
             print("=======")
-            print("Memory size: \(GPU.memoryLimit / 1024)K")
-            print("Cache size:  \(GPU.cacheLimit / 1024)K")
+            print("Memory size: \(Memory.memoryLimit / 1024)K")
+            print("Cache size:  \(Memory.cacheLimit / 1024)K")
 
             print("")
             print("=======")
@@ -283,20 +283,6 @@ struct EvaluateCommand: AsyncParsableCommand {
     @OptionGroup var prompt: PromptArguments
     @OptionGroup var media: MediaArguments
 
-    private func userInput(modelConfiguration: ModelConfiguration) -> UserInput {
-        let prompt =
-            (try? self.prompt.resolvePrompt(configuration: modelConfiguration))
-            ?? modelConfiguration.defaultPrompt
-
-        return UserInput(
-            chat: [
-                .system(generate.system),
-                .user(prompt, images: media.images, videos: media.videos),
-            ],
-            processing: media.processing
-        )
-    }
-
     @MainActor
     mutating func run() async throws {
         let modelFactory: ModelFactory
@@ -325,29 +311,42 @@ struct EvaluateCommand: AsyncParsableCommand {
         // Get the resolved configuration (this has the default prompt)
         let modelConfiguration = await modelContainer.configuration
 
+        let prompt =
+            (try? self.prompt.resolvePrompt(configuration: modelConfiguration))
+            ?? modelConfiguration.defaultPrompt
+
         if !generate.quiet {
             print("Loaded \(modelConfiguration.name)")
         }
 
-        let userInput = self.userInput(modelConfiguration: modelConfiguration)
+        let session = ChatSession(
+            modelContainer,
+            instructions: generate.system,
+            generateParameters: generate.generateParameters,
+            processing: media.processing
+        )
 
         if !generate.quiet {
             print("Starting generation ...")
-            print(userInput.prompt, terminator: " ")
+            print(prompt, terminator: " ")
         }
 
-        let (result, _) = try await modelContainer.perform { [generate] context in
-            let input = try await context.processor.prepare(input: userInput)
-            return try await generate.generate(input: input, context: context)
+        // use the `stream` variant as we want to capture the generation statistics as well
+        var completionInfo: GenerateCompletionInfo?
+
+        for try await item in session.streamDetails(
+            to: prompt, images: media.images, videos: media.videos
+        ) {
+            switch item {
+            case .chunk(let chunk): print(chunk, terminator: "")
+            case .info(let info): completionInfo = info
+            default: break
+            }
         }
 
-        // wait for any asynchronous cleanup, e.g. tearing down compiled functions
-        // before the task exits -- this would race with mlx::core shutdown
-        try await Task.sleep(for: .milliseconds(30))
-
-        if !generate.quiet {
+        if !generate.quiet, let completionInfo {
             print("------")
-            print(result.summary())
+            print(completionInfo.summary())
 
             memory.reportMemoryStatistics()
         }
